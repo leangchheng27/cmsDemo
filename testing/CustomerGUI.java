@@ -262,36 +262,48 @@ public class CustomerGUI {
                     JOptionPane.showMessageDialog(frame, "Please enter a valid number of tickets.");
                     return;
                 }
-    
+
                 // Check available seats
                 String checkQuery = "SELECT available_seats, ticket_price FROM shows WHERE id = ? AND available_seats >= ?";
                 try (Connection conn = MySQLConnection.getConnection();
-                     PreparedStatement checkStmt = conn.prepareStatement(checkQuery)) {
+                    PreparedStatement checkStmt = conn.prepareStatement(checkQuery)) {
                     checkStmt.setInt(1, showId);
                     checkStmt.setInt(2, tickets);
                     ResultSet rs = checkStmt.executeQuery();
-    
+
                     if (rs.next()) {
                         double ticketPrice = rs.getDouble("ticket_price");
                         double totalCost = tickets * ticketPrice;
-    
+
                         // Check if the customer has enough balance
                         if (customer.getBalance() < totalCost) {
                             JOptionPane.showMessageDialog(frame, "Insufficient balance. Please top up your account.");
                             return;
                         }
-    
+
                         // Proceed with booking
                         String bookQuery = "INSERT INTO tickets (customer_id, show_id, number_of_tickets, total_cost) VALUES (?, ?, ?, ?)";
-                        try (PreparedStatement bookStmt = conn.prepareStatement(bookQuery)) {
-                            System.out.println("Customer ID being used for booking: " + customer.getId()); // Debugging statement
+                        String updateBalanceQuery = "UPDATE customers SET balance = ? WHERE id = ?";
+                        try (PreparedStatement bookStmt = conn.prepareStatement(bookQuery);
+                            PreparedStatement updateBalanceStmt = conn.prepareStatement(updateBalanceQuery)) {
+
+                            // Insert the booking
                             bookStmt.setInt(1, customer.getId());
                             bookStmt.setInt(2, showId);
                             bookStmt.setInt(3, tickets);
                             bookStmt.setDouble(4, totalCost);
                             bookStmt.executeUpdate();
-    
-                            JOptionPane.showMessageDialog(frame, "Booking successful! Total cost: $" + totalCost);
+
+                            // Deduct the total cost from the customer's balance
+                            customer.setBalance(customer.getBalance() - totalCost);
+
+                            // Update the balance in the database
+                            updateBalanceStmt.setDouble(1, customer.getBalance());
+                            updateBalanceStmt.setInt(2, customer.getId());
+                            updateBalanceStmt.executeUpdate();
+
+                            JOptionPane.showMessageDialog(frame, "Booking successful! Total cost: $" + totalCost +
+                                    "\nRemaining balance: $" + customer.getBalance());
                         }
                     } else {
                         JOptionPane.showMessageDialog(frame, "Not enough seats available.");
